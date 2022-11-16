@@ -3,7 +3,6 @@ package clients
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -17,7 +16,7 @@ import (
 	"github.com/wind-c/comqtt/server/system"
 )
 
-var testClientStop = errors.New("test stop")
+var errtestClientStop = errors.New("test stop")
 
 var receiveMaximum = 256
 
@@ -315,7 +314,7 @@ func TestClientForgetSubscription(t *testing.T) {
 	cl := genClient()
 	require.NotNil(t, cl)
 	cl.Subscriptions = map[string]packets.SubOptions{
-		"a/b/c/": packets.SubOptions{QoS: 1},
+		"a/b/c/": {QoS: 1},
 	}
 	cl.ForgetSubscription("a/b/c/")
 	require.Empty(t, cl.Subscriptions["a/b/c"])
@@ -347,7 +346,7 @@ func BenchmarkClientRefreshDeadline(b *testing.B) {
 func TestClientStart(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 	time.Sleep(time.Millisecond)
 	require.Equal(t, uint32(1), atomic.LoadUint32(&cl.R.State))
 	require.Equal(t, uint32(2), atomic.LoadUint32(&cl.W.State))
@@ -355,7 +354,7 @@ func TestClientStart(t *testing.T) {
 
 func BenchmarkClientStart(b *testing.B) {
 	cl := genClient()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 
 	for n := 0; n < b.N; n++ {
 		cl.Start()
@@ -365,7 +364,7 @@ func BenchmarkClientStart(b *testing.B) {
 func TestClientReadFixedHeader(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 
 	cl.R.Set([]byte{packets.Connect << 4, 0x00}, 0, 2)
 	cl.R.SetPos(0, 2)
@@ -384,7 +383,7 @@ func TestClientReadFixedHeader(t *testing.T) {
 func TestClientReadFixedHeaderDecodeError(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 
 	o := make(chan error)
 	go func() {
@@ -400,7 +399,7 @@ func TestClientReadFixedHeaderDecodeError(t *testing.T) {
 func TestClientReadFixedHeaderReadEOF(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 
 	o := make(chan error)
 	go func() {
@@ -419,7 +418,7 @@ func TestClientReadFixedHeaderReadEOF(t *testing.T) {
 func TestClientReadFixedHeaderNoLengthTerminator(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 
 	o := make(chan error)
 	go func() {
@@ -436,7 +435,7 @@ func TestClientReadFixedHeaderNoLengthTerminator(t *testing.T) {
 func TestClientReadOK(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 
 	// Two packets in a row...
 	b := []byte{
@@ -497,7 +496,7 @@ func TestClientReadOK(t *testing.T) {
 func TestClientReadDone(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 	cl.State.Done = 1
 
 	err := cl.Read(func(cl *Client, pk packets.Packet) error {
@@ -510,7 +509,7 @@ func TestClientReadDone(t *testing.T) {
 func TestClientReadPacketError(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 
 	b := []byte{
 		0, 18,
@@ -554,15 +553,15 @@ func TestClientReadPacketEOF(t *testing.T) {
 	}()
 
 	cl.R.Stop()
-	cl.Stop(testClientStop)
+	cl.Stop(errtestClientStop)
 	require.Error(t, <-o)
-	require.True(t, errors.Is(cl.StopCause(), testClientStop))
+	require.True(t, errors.Is(cl.StopCause(), errtestClientStop))
 }
 
 func TestClientReadHandlerErr(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 
 	b := []byte{
 		byte(packets.Publish << 4), 11, // Fixed header
@@ -585,7 +584,7 @@ func TestClientReadHandlerErr(t *testing.T) {
 func TestClientReadPacketOK(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 
 	err := cl.R.Set([]byte{
 		byte(packets.Publish << 4), 11, // Fixed header
@@ -617,7 +616,7 @@ func TestClientReadPacketOK(t *testing.T) {
 func TestClientReadPacket(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 
 	for i, tt := range pkTable {
 		err := cl.R.Set(tt.bytes, 0, len(tt.bytes))
@@ -647,7 +646,7 @@ func TestClientReadPacket(t *testing.T) {
 func TestClientReadPacketReadingError(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 
 	err := cl.R.Set([]byte{
 		0, 11, // Fixed header
@@ -668,7 +667,7 @@ func TestClientReadPacketReadingError(t *testing.T) {
 func TestClientReadPacketReadError(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 	cl.R.Stop()
 
 	_, err := cl.ReadPacket(&packets.FixedHeader{
@@ -680,7 +679,7 @@ func TestClientReadPacketReadError(t *testing.T) {
 func TestClientReadPacketReadUnknown(t *testing.T) {
 	cl := genClient()
 	cl.Start()
-	defer cl.Stop(testClientStop)
+	defer cl.Stop(errtestClientStop)
 	cl.R.Stop()
 
 	_, err := cl.ReadPacket(&packets.FixedHeader{
@@ -697,7 +696,7 @@ func TestClientWritePacket(t *testing.T) {
 
 		o := make(chan []byte)
 		go func() {
-			buf, err := ioutil.ReadAll(w)
+			buf, err := io.ReadAll(w)
 			require.NoError(t, err)
 			o <- buf
 		}()
@@ -710,13 +709,13 @@ func TestClientWritePacket(t *testing.T) {
 		r.Close()
 
 		require.Equal(t, tt.bytes, <-o, "Mismatched packet: [i:%d] %d", i, tt.bytes[0])
-		cl.Stop(testClientStop)
+		cl.Stop(errtestClientStop)
 
 		// The stop cause is either the test error, EOF, or a
 		// closed pipe, depending on which goroutine runs first.
 		err = cl.StopCause()
 		require.True(t,
-			errors.Is(err, testClientStop) ||
+			errors.Is(err, errtestClientStop) ||
 				errors.Is(err, io.EOF) ||
 				errors.Is(err, io.ErrClosedPipe) ||
 				errors.Is(err, ErrConnectionClosed))
@@ -733,7 +732,7 @@ func TestClientWritePacketWriteNoConn(t *testing.T) {
 	c, _ := net.Pipe()
 	cl := NewClient(c, circ.NewReader(16, 4), circ.NewWriter(16, 4), new(system.Info), 256)
 	cl.W.SetPos(0, 16)
-	cl.Stop(testClientStop)
+	cl.Stop(errtestClientStop)
 
 	_, err := cl.WritePacket(pkTable[1].packet)
 	require.Error(t, err)
@@ -803,7 +802,7 @@ func TestInflightGetAll(t *testing.T) {
 
 	m := cl.Inflight.GetAll()
 	o := map[uint16]*InflightMessage{
-		2: &InflightMessage{},
+		2: {},
 	}
 	require.Equal(t, o, m)
 }
@@ -995,7 +994,7 @@ var (
 					"d/e/f/g/h/i",
 					"x/y/z",
 				},
-				SubOss: []packets.SubOptions{packets.SubOptions{QoS: 0}, packets.SubOptions{QoS: 1}, packets.SubOptions{QoS: 2}},
+				SubOss: []packets.SubOptions{{QoS: 0}, {QoS: 1}, {QoS: 2}},
 			},
 		},
 		{

@@ -66,7 +66,6 @@ var (
 
 	// PACKETS
 	ErrProtocolViolation        = errors.New("protocol violation")
-	ErrOffsetStrOutOfRange      = errors.New("offset string out of range")
 	ErrOffsetBytesOutOfRange    = errors.New("offset bytes out of range")
 	ErrOffsetByteOutOfRange     = errors.New("offset byte out of range")
 	ErrOffsetBoolOutOfRange     = errors.New("offset bool out of range")
@@ -241,14 +240,14 @@ func (pk *Packet) ConnectDecode(buf []byte) error {
 func (pk *Packet) ConnectValidate() (b byte, err error) {
 
 	// End if protocol name is bad.
-	if bytes.Compare(pk.ProtocolName, []byte{'M', 'Q', 'I', 's', 'd', 'p'}) != 0 &&
-		bytes.Compare(pk.ProtocolName, []byte{'M', 'Q', 'T', 'T'}) != 0 {
+	if !bytes.Equal(pk.ProtocolName, []byte{'M', 'Q', 'I', 's', 'd', 'p'}) &&
+		!bytes.Equal(pk.ProtocolName, []byte{'M', 'Q', 'T', 'T'}) {
 		return CodeConnectProtocolViolation, ErrProtocolViolation
 	}
 
 	// End if protocol version is bad.
-	if (bytes.Compare(pk.ProtocolName, []byte{'M', 'Q', 'I', 's', 'd', 'p'}) == 0 && pk.ProtocolVersion != 3) ||
-		(bytes.Compare(pk.ProtocolName, []byte{'M', 'Q', 'T', 'T'}) == 0 && pk.ProtocolVersion != 4 && pk.ProtocolVersion != 5) {
+	if (bytes.Equal(pk.ProtocolName, []byte{'M', 'Q', 'I', 's', 'd', 'p'}) && pk.ProtocolVersion != 3) ||
+		(bytes.Equal(pk.ProtocolName, []byte{'M', 'Q', 'T', 'T'}) && pk.ProtocolVersion != 4 && pk.ProtocolVersion != 5) {
 		return CodeConnectBadProtocolVersion, ErrProtocolViolation
 	}
 
@@ -296,12 +295,12 @@ func (pk *Packet) ConnackDecode(buf []byte) error {
 
 	pk.SessionPresent, offset, err = decodeByteBool(buf, 0)
 	if err != nil {
-		return ErrMalformedSessionPresent
+		return fmt.Errorf("%s: %w", err, ErrMalformedSessionPresent)
 	}
 
 	pk.ReturnCode, _, err = decodeByte(buf, offset)
 	if err != nil {
-		return ErrMalformedReturnCode
+		return fmt.Errorf("%s: %w", err, ErrMalformedReturnCode)
 	}
 
 	return nil
@@ -567,7 +566,7 @@ func (pk *Packet) SubscribeDecode(buf []byte) error {
 		}
 
 		// Ensure QoS byte is within range.
-		if !(qos >= 0 && qos <= 2) {
+		if !(qos <= 2) {
 			//if !validateQoS(qos) {
 			return ErrMalformedQoS
 		}

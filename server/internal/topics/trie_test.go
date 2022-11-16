@@ -1,8 +1,9 @@
 package topics
 
 import (
-	"github.com/wind-c/comqtt/server/internal/packets"
 	"testing"
+
+	"github.com/wind-c/comqtt/server/internal/packets"
 
 	"github.com/stretchr/testify/require"
 )
@@ -112,8 +113,10 @@ func TestRetainMessage(t *testing.T) {
 	require.Equal(t, pk2, index.Root.Leaves["path"].Leaves["to"].Leaves["another"].Leaves["mqtt"].Message)
 	require.Contains(t, index.Root.Leaves["path"].Leaves["to"].Leaves["another"].Leaves["mqtt"].Clients, "client-1")
 
-	q = index.RetainMessage(pk2) // already exsiting
-	require.Equal(t, int64(0), q)
+	// The same message already exists, but we're not doing a deep-copy check, so it's considered
+	// to be a new message.
+	q = index.RetainMessage(pk2)
+	require.Equal(t, int64(1), q)
 	require.NotNil(t, index.Root.Leaves["path"].Leaves["to"].Leaves["another"].Leaves["mqtt"])
 	require.Equal(t, pk2, index.Root.Leaves["path"].Leaves["to"].Leaves["another"].Leaves["mqtt"].Message)
 	require.Contains(t, index.Root.Leaves["path"].Leaves["to"].Leaves["another"].Leaves["mqtt"].Clients, "client-1")
@@ -125,6 +128,14 @@ func TestRetainMessage(t *testing.T) {
 	require.NotNil(t, index.Root.Leaves["path"].Leaves["to"].Leaves["my"].Leaves["mqtt"])
 	require.Equal(t, pk, index.Root.Leaves["path"].Leaves["to"].Leaves["my"].Leaves["mqtt"].Message)
 	require.Equal(t, false, index.Root.Leaves["path"].Leaves["to"].Leaves["another"].Leaves["mqtt"].Message.FixedHeader.Retain)
+
+	// Second Delete retained
+	q = index.RetainMessage(pk3)
+	require.Equal(t, int64(0), q)
+	require.NotNil(t, index.Root.Leaves["path"].Leaves["to"].Leaves["my"].Leaves["mqtt"])
+	require.Equal(t, pk, index.Root.Leaves["path"].Leaves["to"].Leaves["my"].Leaves["mqtt"].Message)
+	require.Equal(t, false, index.Root.Leaves["path"].Leaves["to"].Leaves["another"].Leaves["mqtt"].Message.FixedHeader.Retain)
+
 }
 
 func BenchmarkRetainMessage(b *testing.B) {
@@ -138,22 +149,22 @@ func BenchmarkRetainMessage(b *testing.B) {
 func TestSubscribeOK(t *testing.T) {
 	index := New()
 
-	q := index.Subscribe("path/to/my/mqtt", "client-1", 0)
+	q, _ := index.Subscribe("path/to/my/mqtt", "client-1", 0)
 	require.Equal(t, true, q)
 
-	q = index.Subscribe("path/to/my/mqtt", "client-1", 0)
+	q, _ = index.Subscribe("path/to/my/mqtt", "client-1", 0)
 	require.Equal(t, false, q)
 
-	q = index.Subscribe("path/to/my/mqtt", "client-2", 0)
+	q, _ = index.Subscribe("path/to/my/mqtt", "client-2", 0)
 	require.Equal(t, true, q)
 
-	q = index.Subscribe("path/to/another/mqtt", "client-1", 0)
+	q, _ = index.Subscribe("path/to/another/mqtt", "client-1", 0)
 	require.Equal(t, true, q)
 
-	q = index.Subscribe("path/+", "client-2", 0)
+	q, _ = index.Subscribe("path/+", "client-2", 0)
 	require.Equal(t, true, q)
 
-	q = index.Subscribe("#", "client-3", 0)
+	q, _ = index.Subscribe("#", "client-3", 0)
 	require.Equal(t, true, q)
 
 	require.Contains(t, index.Root.Leaves["path"].Leaves["to"].Leaves["my"].Leaves["mqtt"].Clients, "client-1")
@@ -187,20 +198,20 @@ func TestUnsubscribeA(t *testing.T) {
 	require.Contains(t, index.Root.Leaves["path"].Leaves["to"].Leaves["stuff"].Clients, "client-2")
 	require.Contains(t, index.Root.Leaves["#"].Clients, "client-3")
 
-	ok := index.Unsubscribe("path/to/my/mqtt", "client-1")
+	ok, _ := index.Unsubscribe("path/to/my/mqtt", "client-1")
 	require.Equal(t, true, ok)
 
 	require.Nil(t, index.Root.Leaves["path"].Leaves["to"].Leaves["my"])
 	require.Contains(t, index.Root.Leaves["path"].Leaves["to"].Leaves["+"].Leaves["mqtt"].Clients, "client-1")
 
-	ok = index.Unsubscribe("path/to/stuff", "client-1")
+	ok, _ = index.Unsubscribe("path/to/stuff", "client-1")
 	require.Equal(t, true, ok)
 
 	require.NotContains(t, index.Root.Leaves["path"].Leaves["to"].Leaves["stuff"].Clients, "client-1")
 	require.Contains(t, index.Root.Leaves["path"].Leaves["to"].Leaves["stuff"].Clients, "client-2")
 	require.Contains(t, index.Root.Leaves["#"].Clients, "client-3")
 
-	ok = index.Unsubscribe("fdasfdas/dfsfads/sa", "client-1")
+	ok, _ = index.Unsubscribe("fdasfdas/dfsfads/sa", "client-1")
 	require.Equal(t, false, ok)
 
 }
@@ -210,7 +221,7 @@ func TestUnsubscribeCascade(t *testing.T) {
 	index.Subscribe("a/b/c", "client-1", 0)
 	index.Subscribe("a/b/c/e/e", "client-1", 0)
 
-	ok := index.Unsubscribe("a/b/c/e/e", "client-1")
+	ok, _ := index.Unsubscribe("a/b/c/e/e", "client-1")
 	require.Equal(t, true, ok)
 	require.NotEmpty(t, index.Root.Leaves)
 	require.Contains(t, index.Root.Leaves["a"].Leaves["b"].Leaves["c"].Clients, "client-1")

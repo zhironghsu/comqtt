@@ -55,9 +55,14 @@ func (i *InflightMap) Len() int {
 
 // GetAll returns all the in-flight messages.
 func (i *InflightMap) GetAll() map[uint16]*InflightMessage {
+	m := map[uint16]*InflightMessage{}
 	i.RLock()
 	defer i.RUnlock()
-	return i.internal
+
+	for k, v := range i.internal {
+		m[k] = v
+	}
+	return m
 }
 
 // Delete removes an in-flight message from the map. Returns true if the

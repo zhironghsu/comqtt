@@ -2,11 +2,12 @@ package server
 
 import (
 	"fmt"
+	"time"
+
 	"github.com/wind-c/comqtt/server/events"
 	"github.com/wind-c/comqtt/server/internal/clients"
 	"github.com/wind-c/comqtt/server/internal/packets"
 	"github.com/wind-c/comqtt/server/persistence"
-	"time"
 )
 
 // readStore reads in any data from the persistent datastore (if applicable).

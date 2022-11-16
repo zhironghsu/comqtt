@@ -1,16 +1,17 @@
-// packet server provides a MQTT 3.1.1 & 5.0 compliant MQTT server.
+// package server provides a MQTT 3.1.1 & 5.0 compliant MQTT server.
 package server
 
 import (
 	"errors"
 	"fmt"
-	"github.com/panjf2000/ants/v2"
 	"io"
 	"net"
 	"runtime"
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/panjf2000/ants/v2"
 
 	"github.com/wind-c/comqtt/server/events"
 	"github.com/wind-c/comqtt/server/internal/circ"
@@ -40,8 +41,7 @@ var (
 	// ErrReadConnectInvalid indicates that the connection packet was invalid.
 	ErrReadConnectInvalid = errors.New("connect packet was not valid")
 
-	// ErrConnectNotAuthorized indicates that the connection packet had incorrect
-	// authentication parameters.
+	// ErrConnectNotAuthorized indicates that the connection packet had incorrect auth values.
 	ErrConnectNotAuthorized = errors.New("connect packet was not authorized")
 
 	// ErrInvalidTopic indicates that the specified topic was not valid.
@@ -50,11 +50,21 @@ var (
 	// ErrRejectPacket indicates that a packet should be dropped instead of processed.
 	ErrRejectPacket = errors.New("packet rejected")
 
-	ErrClientDisconnect     = errors.New("Client disconnected")
-	ErrClientReconnect      = errors.New("Client attemped to reconnect")
-	ErrServerShutdown       = errors.New("Server is shutting down")
-	ErrSessionReestablished = errors.New("Session reestablished")
-	ErrConnectionFailed     = errors.New("Connection attempt failed")
+	// ErrClientDisconnect indicates that a client disconnected from the server.
+	ErrClientDisconnect = errors.New("client disconnected")
+
+	// ErrClientReconnect indicates that a client attempted to reconnect while still connected.
+	ErrClientReconnect = errors.New("client sent connect while connected")
+
+	// ErrServerShutdown is propagated when the server shuts down.
+	ErrServerShutdown = errors.New("server is shutting down")
+
+	// ErrSessionReestablished indicates that an existing client was replaced by a newly connected
+	// client. The existing client is disconnected.
+	ErrSessionReestablished = errors.New("client session re-established")
+
+	// ErrConnectionFailed indicates that a client connection attempt failed for other reasons.
+	ErrConnectionFailed = errors.New("connection attempt failed")
 
 	// SysTopicInterval is the number of milliseconds between $SYS topic publishes.
 	SysTopicInterval time.Duration = 30000
@@ -66,7 +76,7 @@ var (
 	// inflightMaxResends is the maximum number of times to try resending QoS promises.
 	inflightMaxResends = 6
 
-	// defaultReceiveMaximum is the maximum number of QOS1 & 2 messages allowed to be "inflight"
+	// defaultReceiveMaximum is the maximum number of QoS 1 & 2 messages allowed to be "inflight"
 	defaultReceiveMaximum = 256
 )
 
@@ -90,7 +100,7 @@ type Server struct {
 
 // Options contains configurable options for the server.
 type Options struct {
-	// RunMode program running mode，1 single or 2 cluster
+	// RunMode program running mode 1 single or 2 cluster
 	RunMode uint
 
 	// BufferSize overrides the default buffer size (circ.DefaultBufferSize) for the client buffers.
@@ -99,7 +109,7 @@ type Options struct {
 	// BufferBlockSize overrides the default buffer block size (DefaultBlockSize) for the client buffers.
 	BufferBlockSize int
 
-	// ReceiveMaximum is the maximum number of QOS1 & 2 messages allowed to be "inflight"
+	// ReceiveMaximum is the maximum number of QoS 1 & 2 messages allowed to be "inflight"
 	ReceiveMaximum int
 
 	// InflightHandling is the handling mode of inflight message when the receive-maximum is exceeded, 0 closes the connection or 1 overwrites the old inflight message
@@ -447,8 +457,8 @@ func (s *Server) inheritClientSession(pk packets.Packet, cl *clients.Client) (se
 // unsubscribeClient unsubscribes a client from all of their subscriptions.
 func (s *Server) unsubscribeClient(cl *clients.Client) {
 	ci := cl.Info()
+	cl.SubMu.RLock()
 	for k := range cl.Subscriptions {
-		delete(cl.Subscriptions, k)
 		if ok, c := s.Topics.Unsubscribe(k, cl.ID); ok {
 			atomic.AddInt64(&s.System.Subscriptions, -1)
 			if s.Events.OnUnsubscribe != nil {
@@ -456,9 +466,11 @@ func (s *Server) unsubscribeClient(cl *clients.Client) {
 			}
 		}
 	}
+	cl.SubMu.RUnlock()
+	cl.CleanSubscriptions()
 }
 
-// loadClientHistory loads its history info for the connected client,
+// LoadClientHistory loads its history info for the connected client,
 func (s *Server) loadClientHistory(cl *clients.Client) {
 	if s.Store == nil {
 		return
@@ -494,7 +506,7 @@ func (s *Server) loadClientHistory(cl *clients.Client) {
 	}
 }
 
-// resendClientInflight attempts to resend all undelivered inflight messages
+// ResendClientInflight attempts to resend all undelivered inflight messages
 // to a client.
 func (s *Server) resendClientInflight(cl *clients.Client, im *clients.InflightMessage, force bool) error {
 	nt := time.Now().Unix()
@@ -785,6 +797,7 @@ func (s *Server) CleanSession(cl *clients.Client) {
 // CleanSubscription
 func (s *Server) cleanSubscription(cl *clients.Client) {
 	ci := cl.Info()
+	cl.SubMu.RLock()
 	for filter := range cl.Subscriptions {
 		q, c := s.Topics.Unsubscribe(filter, cl.ID)
 		if q {
@@ -793,8 +806,9 @@ func (s *Server) cleanSubscription(cl *clients.Client) {
 				s.Events.OnUnsubscribe(filter, ci, c == 0)
 			}
 		}
-		cl.ForgetSubscription(filter)
 	}
+	cl.SubMu.RUnlock()
+	cl.CleanSubscriptions()
 }
 
 // copySystemInfo

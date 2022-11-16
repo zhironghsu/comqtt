@@ -1105,7 +1105,7 @@ var expectedPackets = map[byte][]packetTestData{
 					"d/e/f/g/h/i",
 					"x/y/z",
 				},
-				Qoss: []byte{0, 1, 2},
+				SubOss: []SubOptions{{QoS: 0}, {QoS: 1}, {QoS: 2}},
 			},
 		},
 
@@ -1200,7 +1200,7 @@ var expectedPackets = map[byte][]packetTestData{
 				Topics: []string{
 					"a/b/c",
 				},
-				Qoss:     []byte{1},
+				SubOss:   []SubOptions{{QoS: 1}},
 				PacketID: 0,
 			},
 			meta: byte(2),

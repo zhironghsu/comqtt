@@ -341,7 +341,7 @@ func TestPubackDecode(t *testing.T) {
 
 		if wanted.failFirst != nil {
 			require.Error(t, err, "Expected error unpacking buffer [i:%d] %s", i, wanted.desc)
-			require.Equal(t, wanted.failFirst, err, "Expected fail state; %v [i:%d] %s", err.Error(), i, wanted.desc)
+			require.True(t, errors.Is(err, wanted.failFirst), "Expected fail state; %v [i:%d] %s", err.Error(), i, wanted.desc)
 			continue
 		}
 
@@ -828,7 +828,7 @@ func TestSubscribeEncode(t *testing.T) {
 			require.EqualValues(t, wanted.rawBytes, encoded, "Mismatched byte values [i:%d] %s", i, wanted.desc)
 			require.Equal(t, wanted.packet.PacketID, pk.PacketID, "Mismatched Packet ID [i:%d] %s", i, wanted.desc)
 			require.Equal(t, wanted.packet.Topics, pk.Topics, "Mismatched Topics slice [i:%d] %s", i, wanted.desc)
-			require.Equal(t, wanted.packet.Qoss, pk.Qoss, "Mismatched Qoss slice [i:%d] %s", i, wanted.desc)
+			require.Equal(t, wanted.packet.SubOss, pk.SubOss, "Mismatched SubOss slice [i:%d] %s", i, wanted.desc)
 		}
 	}
 }
@@ -864,7 +864,7 @@ func TestSubscribeDecode(t *testing.T) {
 
 		require.Equal(t, wanted.packet.PacketID, pk.PacketID, "Mismatched Packet ID [i:%d] %s", i, wanted.desc)
 		require.Equal(t, wanted.packet.Topics, pk.Topics, "Mismatched Topics slice [i:%d] %s", i, wanted.desc)
-		require.Equal(t, wanted.packet.Qoss, pk.Qoss, "Mismatched Qoss slice [i:%d] %s", i, wanted.desc)
+		require.Equal(t, wanted.packet.SubOss, pk.SubOss, "Mismatched SubOss slice [i:%d] %s", i, wanted.desc)
 	}
 }
 

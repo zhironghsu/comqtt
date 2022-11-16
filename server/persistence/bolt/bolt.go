@@ -13,7 +13,9 @@ import (
 )
 
 const (
+	// defaultPath is the default file to use to store the data.
 	defaultPath    = "comqtt.db"
+	// defaultTimeout is the default timeout of the file lock.
 	defaultTimeout = 250 * time.Millisecond
 )
 

@@ -66,7 +66,7 @@ type cluster struct {
 }
 
 type Log struct {
-	//　Enable Log enabled or not
+	// Enable Log enabled or not
 	Enable bool `json:"enable" yaml:"enable"`
 
 	// Env app running environment，0 development or 1 production

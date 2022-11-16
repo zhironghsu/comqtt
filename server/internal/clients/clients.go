@@ -25,7 +25,7 @@ var (
 
 	// ErrConnectionClosed is returned when operating on a closed
 	// connection and/or when no error cause has been given.
-	ErrConnectionClosed = errors.New("Connection not open")
+	ErrConnectionClosed = errors.New("connection not open")
 )
 
 // Clients contains a map of the clients known by the broker.
@@ -46,6 +46,17 @@ func (cl *Clients) Add(val *Client) {
 	cl.Lock()
 	cl.internal[val.ID] = val
 	cl.Unlock()
+}
+
+// GetAll returns all the clients.
+func (cl *Clients) GetAll() map[string]*Client {
+	m := map[string]*Client{}
+	cl.RLock()
+	defer cl.RUnlock()
+	for k, v := range cl.internal {
+		m[k] = v
+	}
+	return m
 }
 
 // Get returns the value of a client if it exists.
@@ -84,11 +95,6 @@ func (cl *Clients) GetByListener(id string) []*Client {
 	return clients
 }
 
-// GetAll returns all clients
-func (cl *Clients) GetAll() map[string]*Client {
-	return cl.internal
-}
-
 // Client contains information about a client known by the broker.
 type Client struct {
 	State           State                         // the operational state of the client.
@@ -101,13 +107,16 @@ type Client struct {
 	ID              string                        // the client id.
 	conn            net.Conn                      // the net.Conn used to establish the connection.
 	R               *circ.Reader                  // a reader for reading incoming bytes.
+	Rmu             sync.RWMutex                  // a mutex for R
 	W               *circ.Writer                  // a writer for writing outgoing bytes.
+	Wmu             sync.RWMutex                  // a mutex for W
 	Subscriptions   map[string]packets.SubOptions // a map of the subscription filters a client maintains.
+	SubMu           sync.RWMutex                  // mutex for Subscriptions
 	systemInfo      *system.Info                  // pointers to server system info.
 	packetID        uint32                        // the current highest packetID.
 	keepalive       uint16                        // the number of seconds the connection can wait.
 	CleanSession    bool                          // indicates if the client expects a clean-session.
-	ProtocolVersion byte                          // mqtt protocol version, optional value: v3.1 = 3、v3.1.1 = 4、v5.0 = 5
+	ProtocolVersion byte                          // mqtt protocol version, optional value: v3.1 = 3,v3.1.1 = 4, v5.0 = 5
 	TopicAlias      map[uint16]string             // key is alias, value is topic, for v5
 
 	encoder func(*packets.Packet) (*bytes.Buffer, error)
@@ -232,16 +241,23 @@ func (cl *Client) NextPacketID() uint32 {
 
 // NoteSubscription makes a note of a subscription for the client.
 func (cl *Client) NoteSubscription(filter string, so packets.SubOptions) {
-	cl.Lock()
+	cl.SubMu.Lock()
 	cl.Subscriptions[filter] = so
-	cl.Unlock()
+	cl.SubMu.Unlock()
 }
 
 // ForgetSubscription forgests a subscription note for the client.
 func (cl *Client) ForgetSubscription(filter string) {
-	cl.Lock()
+	cl.SubMu.Lock()
 	delete(cl.Subscriptions, filter)
-	cl.Unlock()
+	cl.SubMu.Unlock()
+}
+
+// CleanSubscriptions clears all subscriptions for the client.
+func (cl *Client) CleanSubscriptions() {
+	cl.SubMu.Lock()
+	defer cl.SubMu.Unlock()
+	cl.Subscriptions = make(map[string]packets.SubOptions)
 }
 
 // Start begins the client goroutines reading and writing packets.
@@ -276,8 +292,12 @@ func (cl *Client) Start() {
 // ClearBuffers sets the read/write buffers to nil so they can be
 // deallocated automatically when no longer in use.
 func (cl *Client) ClearBuffers() {
+	cl.Rmu.Lock()
 	cl.R = nil
+	cl.Rmu.Unlock()
+	cl.Wmu.Lock()
 	cl.W = nil
+	cl.Wmu.Unlock()
 }
 
 // Stop instructs the client to shut down all processing goroutines and disconnect.
@@ -288,8 +308,12 @@ func (cl *Client) Stop(err error) {
 	}
 
 	cl.State.endOnce.Do(func() {
-		cl.R.Stop()
-		cl.W.Stop()
+		if cl.R != nil {
+			cl.R.Stop()
+		}
+		if cl.W != nil {
+			cl.W.Stop()
+		}
 		cl.State.endedW.Wait()
 
 		_ = cl.conn.Close() // omit close error
@@ -405,9 +429,13 @@ func (cl *Client) Read(packetHandler func(*Client, packets.Packet) error) error 
 	}
 }
 
-// ReadPacket reads the remaining buffer into an MQTT packet，not connect packet.
+// ReadPacket reads the remaining buffer into an MQTT packet.
 func (cl *Client) ReadPacket(fh *packets.FixedHeader) (pk packets.Packet, err error) {
-	bx, err := cl.readRemaining(fh)
+	var bx *[]byte
+	bx, err = cl.readRemaining(fh)
+	if err != nil {
+		return
+	}
 	pk.FixedHeader = *fh
 	err = cl.decoder(bx, &pk)
 	cl.R.CommitTail(pk.FixedHeader.Remaining)
@@ -420,7 +448,11 @@ func (cl *Client) ReadConnectPacket(fh *packets.FixedHeader) (pk packets.Packet,
 	if fh.Remaining == 0 {
 		return
 	}
-	bx, err := cl.readRemaining(fh)
+	var bx *[]byte
+	bx, err = cl.readRemaining(fh)
+	if err != nil {
+		return
+	}
 	pk.FixedHeader = *fh
 	err = pk.ConnectDecode(*bx)
 	cl.ProtocolVersion = pk.ProtocolVersion
@@ -463,7 +495,7 @@ func (cl *Client) decodePacketV3x(bx *[]byte, pk *packets.Packet) (err error) {
 	case packets.Pingresp:
 	case packets.Disconnect:
 	default:
-		err = fmt.Errorf("No valid packet available; %v", pk.FixedHeader.Type)
+		err = fmt.Errorf("no valid packet available; %v", pk.FixedHeader.Type)
 	}
 
 	return
@@ -500,7 +532,7 @@ func (cl *Client) decodePacketV5(bx *[]byte, pk *packets.Packet) (err error) {
 	case packets.Disconnect:
 		err = pk.DisconnectDecodeV5(*bx)
 	default:
-		err = fmt.Errorf("No valid packet available; %v", pk.FixedHeader.Type)
+		err = fmt.Errorf("no valid packet available; %v", pk.FixedHeader.Type)
 	}
 
 	return
@@ -509,6 +541,13 @@ func (cl *Client) decodePacketV5(bx *[]byte, pk *packets.Packet) (err error) {
 // WritePacket encodes and writes a packet to the client.
 func (cl *Client) WritePacket(pk packets.Packet) (n int, err error) {
 	if atomic.LoadUint32(&cl.State.Done) == 1 {
+		return 0, ErrConnectionClosed
+	}
+
+	cl.Wmu.RLock()
+	defer cl.Wmu.RUnlock()
+
+	if cl.W == nil {
 		return 0, ErrConnectionClosed
 	}
 
@@ -571,7 +610,7 @@ func (cl *Client) encodePacketV3x(pk *packets.Packet) (buf *bytes.Buffer, err er
 	case packets.Disconnect:
 		err = pk.DisconnectEncode(buf)
 	default:
-		err = fmt.Errorf("No valid packet available; %v", pk.FixedHeader.Type)
+		err = fmt.Errorf("no valid packet available; %v", pk.FixedHeader.Type)
 	}
 
 	return
@@ -613,7 +652,7 @@ func (cl *Client) encodePacketV5(pk *packets.Packet) (buf *bytes.Buffer, err err
 	case packets.Disconnect:
 		err = pk.DisconnectEncodeV5(buf)
 	default:
-		err = fmt.Errorf("No valid packet available; %v", pk.FixedHeader.Type)
+		err = fmt.Errorf("no valid packet available; %v", pk.FixedHeader.Type)
 	}
 
 	return

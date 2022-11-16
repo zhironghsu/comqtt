@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 )
 
 // packFlags takes the Connect flags and packs them into the single byte
@@ -152,15 +151,15 @@ func (pk *Packet) ConnectDecodeV5(buf []byte) error {
 func (pk *Packet) ConnectValidateV5() (b byte, err error) {
 
 	// End if protocol name is bad.
-	if bytes.Compare(pk.ProtocolName, []byte{'M', 'Q', 'I', 's', 'd', 'p'}) != 0 &&
-		bytes.Compare(pk.ProtocolName, []byte{'M', 'Q', 'T', 'T'}) != 0 {
+	if !bytes.Equal(pk.ProtocolName, []byte{'M', 'Q', 'I', 's', 'd', 'p'}) &&
+		!bytes.Equal(pk.ProtocolName, []byte{'M', 'Q', 'T', 'T'}) {
 		return CodeConnectProtocolViolation, ErrProtocolViolation
 	}
 
 	// End if protocol version is bad.
-	if (bytes.Compare(pk.ProtocolName, []byte{'M', 'Q', 'I', 's', 'd', 'p'}) == 0 && pk.ProtocolVersion != 3) ||
-		(bytes.Compare(pk.ProtocolName, []byte{'M', 'Q', 'T', 'T'}) == 0 && pk.ProtocolVersion != 4) ||
-		(bytes.Compare(pk.ProtocolName, []byte{'M', 'Q', 'T', 'T'}) == 0 && pk.ProtocolVersion != 5) {
+	if (bytes.Equal(pk.ProtocolName, []byte{'M', 'Q', 'I', 's', 'd', 'p'}) && pk.ProtocolVersion != 3) ||
+		(bytes.Equal(pk.ProtocolName, []byte{'M', 'Q', 'T', 'T'}) && pk.ProtocolVersion != 4) ||
+		(bytes.Equal(pk.ProtocolName, []byte{'M', 'Q', 'T', 'T'}) && pk.ProtocolVersion != 5) {
 		return CodeConnectBadProtocolVersion, ErrProtocolViolation
 	}
 
@@ -438,7 +437,7 @@ func (pk *Packet) PublishDecodeV5(buf []byte) error {
 		return fmt.Errorf("%s: %w", err, ErrMalformedProperties)
 	}
 
-	pk.Payload, err = ioutil.ReadAll(buffer)
+	pk.Payload, err = io.ReadAll(buffer)
 	if err != nil {
 		return fmt.Errorf("%s: %w", err, ErrMalformedPayload)
 	}
@@ -726,7 +725,7 @@ func (pk *Packet) SubscribeDecodeV5(buf []byte) error {
 			return fmt.Errorf("%s: %w", err, ErrMalformedQoS)
 		}
 		// Ensure QoS byte is within range.
-		if !(so.QoS >= 0 && so.QoS <= 2) {
+		if !(so.QoS <= 2) {
 			//if !validateQoS(qos) {
 			return ErrMalformedQoS
 		}
